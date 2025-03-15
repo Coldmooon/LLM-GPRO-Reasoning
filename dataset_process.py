@@ -37,22 +37,22 @@ def extract_answer_from_model_output(text):
     # Pattern 1: Extract from <answer> tags
     answer = extract_from_answer_tags(text)
     if answer and answer[-1] != '\n...\n':
-        print("get <answer> tag answer", answer)
-        print("but use the last answer")
+        # print("get <answer> tag answer", answer)
+        # print("but use the last answer")
         return answer[-1]  # For evaluation, use the last answer
     
     # Pattern 2: Extract from LaTeX boxed format (get list of answers)
     boxed_answers = extract_from_latex_boxed(text)
     if boxed_answers:
-        print("get boxed answer", boxed_answers)
-        print("but use the first answer")
+        # print("get boxed answer", boxed_answers)
+        # print("but use the first answer")
         return boxed_answers  # For evaluation, use the first answer
     
     # Pattern 3: Extract from conclusion sentences
     answer = extract_from_conclusion_sentences(text)
     if answer:
-        print("get conclusion answer", answer)
-        print("but use the first answer")
+        # print("get conclusion answer", answer)
+        # print("but use the first answer")
         return answer  # For evaluation, use the last answer
     
     # If all methods fail, return None
@@ -347,9 +347,8 @@ def evaluate_model(model, tokenizer, eval_examples, device):
        try:
            # Extract answer and check correctness
            predicted = extract_answer_from_model_output(response)
-           print("="*50)
-
-           print("init predicted: ", predicted)
+        #    print("="*50)
+        #    print("init predicted: ", predicted)
 
            # Try different matching methods
            if len(predicted) == 1 and predicted[0] == expected:  # Exact match
