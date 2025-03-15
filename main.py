@@ -15,7 +15,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from dataset_process import evaluate_model, prepare_dataset
 from reward import combined_reward
-from GPRO import train_with_grpo
+from GRPO import train_with_grpo
 
 def set_random_seed(seed: int = 42):
     """
