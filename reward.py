@@ -23,9 +23,9 @@ def correctness_reward(prompts, completions, answer, device=None, responses=None
     Args:
         prompts (list): List of input prompts.
         completions (list): List of model completions, each containing content.
-        answer (list): List of expected answers.
+        answer (list, size [27]): List of expected answers. 
         device (torch.device, optional): Device to use for GPU operations.
-        responses (list, optional): Pre-extracted response content to avoid redundant extraction.
+        responses (list, optional, size [27]): Pre-extracted response content to avoid redundant extraction.
         reward_tensor (torch.Tensor, optional): Pre-allocated tensor for rewards.
         **kwargs: Additional keyword arguments.
         
@@ -47,6 +47,30 @@ def correctness_reward(prompts, completions, answer, device=None, responses=None
     
     # Process in batches
     batch_size = 16
+    # # Debug information about input sizes
+    # print(f"\nDebug Information:")
+    # print(f"Number of responses: {len(responses)}")
+    # print(f"Number of answers: {len(answer)}")
+    # print(f"answer：{answer}")
+    # # Validate input lengths match
+    # if len(responses) != len(answer):
+    #     raise ValueError(f"Mismatch between responses ({len(responses)}) and answers ({len(answer)})")
+    
+    # # Sample debugging of first few items
+    # debug_samples = min(3, len(responses))
+    # print(f"\nSampling first {debug_samples} items for detailed inspection:")
+    # for i in range(debug_samples):
+    #     print(f"\nItem {i+1}:")
+    #     print(f"Response: {responses[i][:200]}...") # Show first 200 chars
+    #     print(f"Expected Answer: {answer[i]}")
+    #     extracted = extract_answer_from_model_output(responses[i])
+    #     print(f"Extracted Answer: {extracted}")
+        
+    #     # Validate extracted answer format
+    #     if isinstance(extracted, list):
+    #         print(f"Note: Extracted answer is a list with {len(extracted)} elements")
+    #     elif extracted is None:
+    #         print("Warning: No answer could be extracted from response")
     for i in range(0, len(responses), batch_size):
         batch_responses = responses[i:i+batch_size]
         batch_answers = answer[i:i+batch_size]
@@ -58,25 +82,29 @@ def correctness_reward(prompts, completions, answer, device=None, responses=None
         for j, (extracted, expected) in enumerate(zip(extracted_batch, batch_answers)):
             idx = i + j
             
-            # Handle list format for extracted answers
-            if isinstance(extracted, list) and len(extracted) > 0:
+            # Check if extracted is None
+            if extracted is None:
+                # Handle the case where no answer was extracted
+                rewards_tensor[idx] = 0.0
+                continue
+                
+            # Exact match check
+            if len(extracted) == 1 and extracted[0] == expected:
+                rewards_tensor[idx] = 2.0
+                continue
+            # part of the list matched
+            elif isinstance(extracted, list) and len(extracted) > 0:
                 # Check if expected answer is in the list
                 if expected in extracted:
-                    rewards_tensor[idx] = 2.0
+                    rewards_tensor[idx] = 1.0
                     continue
-                # Otherwise, use the first element for comparison
-                extracted = extracted[0]
+            # Otherwise, use the first element for comparison
+            # Try numeric equivalence
+            r_num = extract_single_number(str(extracted))
+            a_num = extract_single_number(str(expected))
             
-            # Exact match check
-            if extracted == expected:
-                rewards_tensor[idx] = 2.0
-            else:
-                # Try numeric equivalence
-                r_num = extract_single_number(str(extracted))
-                a_num = extract_single_number(str(expected))
-                
-                if r_num is not None and a_num is not None and r_num == a_num:
-                    rewards_tensor[idx] = 1.5
+            if r_num is not None and a_num is not None and r_num == a_num:
+                rewards_tensor[idx] = 1.5
     
     return rewards_tensor
 
@@ -111,10 +139,47 @@ def format_reward(completions, device=None, responses=None, reward_tensor=None, 
     # Calculate format scores
     for idx, response in enumerate(responses):
         score = 0.0
-        if "<reasoning>" in response: score += 0.2
-        if "</reasoning>" in response: score += 0.2
-        if "<answer>" in response: score += 0.2
-        if "</answer>" in response: score += 0.2
+        # if "<reasoning>" in response: score += 0.2
+        # if "</reasoning>" in response: score += 0.2
+        # if "<answer>" in response: score += 0.2
+
+        # Penalize for multiple tag pairs
+        reasoning_starts = response.count("<reasoning>")
+        reasoning_ends = response.count("</reasoning>")
+        answer_starts = response.count("<answer>")
+        answer_ends = response.count("</answer>")
+        
+        if reasoning_starts == 1:
+            score += 0.2
+        if reasoning_ends == 1:
+            score += 0.2
+        if answer_starts == 1:
+            score += 0.2
+        if answer_ends == 1:    
+            score += 0.2
+
+
+        if reasoning_starts > 1 or reasoning_ends > 1:
+            score += 0.1
+            print(f"Warning: Found multiple reasoning tags")
+        if answer_starts > 1 or answer_ends > 1:
+            score += 0.1
+            print(f"Warning: Found multiple answer tags")
+
+        if reasoning_starts != reasoning_ends:
+            score -= 0.2
+            print(f"Warning: Found mismatched reasoning tags")
+        if answer_starts != answer_ends:
+            score -= 0.2    
+            print(f"Warning: Found mismatched answer tags")
+
+        # Penalize if there's text after the final </answer> tag
+        if answer_ends >= 1:
+            last_tag_pos = response.rindex("</answer>")
+            remaining_text = response[last_tag_pos + len("</answer>"):].strip()
+            if remaining_text:
+                score -= 0.2
+                # print(f"Warning: Found text after final </answer> tag: {remaining_text}")   
         rewards_tensor[idx] = score
     
     return rewards_tensor
